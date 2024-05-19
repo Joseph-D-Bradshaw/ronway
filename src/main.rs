@@ -7,7 +7,7 @@ const WINDOW_SIZE_X: f32 = 750.0;
 const WINDOW_SIZE_Y: f32 = 750.0;
 const CELL_SIZE: f32 = 10.0;
 const ROWS: f32 = WINDOW_SIZE_X / CELL_SIZE;
-const GOAL_FPS: u32 = 12;
+const HALF_A_SECOND: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Clone, Default, Debug)]
 enum CellState {
@@ -24,6 +24,7 @@ struct Cell {
 }
 
 struct GameState {
+    tick: std::time::Instant,
     grid: Vec<Vec<Cell>>,
     cell_mesh: graphics::Mesh,
 }
@@ -62,12 +63,21 @@ impl GameState {
             grid.push(row);
         }
 
-        GameState { grid, cell_mesh }
+        GameState {
+            grid,
+            cell_mesh,
+            tick: std::time::Instant::now(),
+        }
     }
 }
 
 impl EventHandler for GameState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult {
+        if self.tick.elapsed() < HALF_A_SECOND {
+            return Ok(());
+        }
+        self.tick = std::time::Instant::now();
+
         for row in &mut self.grid {
             for cell in row.iter_mut() {
                 if cell.location.x % 2.0 != cell.location.y % 2.0 {
@@ -81,25 +91,25 @@ impl EventHandler for GameState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        while ctx.time.check_update_time(GOAL_FPS) {
-            let mut canvas = graphics::Canvas::from_frame(ctx, Color::WHITE);
-            for row in &self.grid {
-                for cell in row {
-                    let color = match cell.state {
-                        CellState::ALIVE => Color::BLACK,
-                        CellState::DEAD => Color::WHITE,
-                    };
+        let mut canvas = graphics::Canvas::from_frame(ctx, Color::WHITE);
 
-                    let params = DrawParam::default()
-                        .dest(cell.location * CELL_SIZE)
-                        .color(color);
+        for row in &self.grid {
+            for cell in row {
+                let color = match cell.state {
+                    CellState::ALIVE => Color::BLACK,
+                    CellState::DEAD => Color::WHITE,
+                };
 
-                    canvas.draw(&self.cell_mesh, params);
-                }
+                let params = DrawParam::default()
+                    .dest(cell.location * CELL_SIZE)
+                    .color(color);
+
+                canvas.draw(&self.cell_mesh, params);
             }
-            canvas.finish(ctx)?;
-            ggez::timer::yield_now();
         }
+
+        canvas.finish(ctx)?;
+        ggez::timer::yield_now();
         Ok(())
     }
 }
