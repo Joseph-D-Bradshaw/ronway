@@ -27,6 +27,7 @@ struct GameState {
     tick: std::time::Instant,
     grid: Vec<Vec<Cell>>,
     cell_mesh: graphics::Mesh,
+    mesh_batch: graphics::InstanceArray,
 }
 
 impl Cell {
@@ -42,7 +43,7 @@ impl Cell {
 impl GameState {
     pub fn new(_ctx: &mut Context) -> GameState {
         let rows_length = ROWS.trunc() as usize;
-        let mut grid: Vec<Vec<Cell>> = vec![Vec::with_capacity(rows_length); rows_length];
+        let mut grid: Vec<Vec<Cell>> = Vec::with_capacity(rows_length);
 
         let cell_mesh = graphics::Mesh::new_rectangle(
             _ctx,
@@ -63,10 +64,42 @@ impl GameState {
             grid.push(row);
         }
 
+        let mut mesh_batch = graphics::InstanceArray::new(_ctx, None);
+        mesh_batch.resize(_ctx, rows_length * rows_length);
+
+        let mut instances = Vec::with_capacity(rows_length * rows_length);
+
+        for x in 0..rows_length {
+            for y in 0..rows_length {
+                let cell = &mut grid[x][y];
+                if cell.location.x % 2.0 != cell.location.y % 2.0 {
+                    cell.state = CellState::ALIVE
+                } else {
+                    cell.state = CellState::DEAD
+                };
+                let color = match cell.state {
+                    CellState::ALIVE => Color::BLACK,
+                    CellState::DEAD => Color::WHITE,
+                };
+
+                let x = x as f32;
+                let y = y as f32;
+
+                let params = DrawParam::new()
+                    .dest(Vec2::new(x * CELL_SIZE, y * CELL_SIZE))
+                    .color(color);
+
+                instances.push(params);
+            }
+        }
+
+        mesh_batch.set(instances);
+
         GameState {
             grid,
             cell_mesh,
             tick: std::time::Instant::now(),
+            mesh_batch,
         }
     }
 }
@@ -77,36 +110,17 @@ impl EventHandler for GameState {
             return Ok(());
         }
         self.tick = std::time::Instant::now();
-
-        for row in &mut self.grid {
-            for cell in row.iter_mut() {
-                if cell.location.x % 2.0 != cell.location.y % 2.0 {
-                    cell.state = CellState::ALIVE
-                } else {
-                    cell.state = CellState::DEAD
-                };
-            }
-        }
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         let mut canvas = graphics::Canvas::from_frame(ctx, Color::WHITE);
 
-        for row in &self.grid {
-            for cell in row {
-                let color = match cell.state {
-                    CellState::ALIVE => Color::BLACK,
-                    CellState::DEAD => Color::WHITE,
-                };
-
-                let params = DrawParam::default()
-                    .dest(cell.location * CELL_SIZE)
-                    .color(color);
-
-                canvas.draw(&self.cell_mesh, params);
-            }
-        }
+        canvas.draw_instanced_mesh(
+            self.cell_mesh.clone(),
+            &self.mesh_batch,
+            DrawParam::new().dest(Vec2::new(0.0, 0.0)),
+        );
 
         canvas.finish(ctx)?;
         ggez::timer::yield_now();
